@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-# open5g
-=======
 # Open5GS DevOps Deployment Guide
 
 Complete production-ready deployment setup for Open5GS 5G Core Network using modern DevOps practices.
@@ -501,4 +498,3 @@ For issues and questions:
 - Open an issue on GitHub
 - Email: devops@example.com
 - Slack: #open5gs-devops
->>>>>>> 1571a34 (OPEN 5G Project added initially)

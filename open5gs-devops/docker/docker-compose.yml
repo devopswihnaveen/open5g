@@ -1,0 +1,191 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:6.0
+    container_name: open5gs-mongodb
+    restart: always
+    environment:
+      MONGO_INITDB_DATABASE: open5gs
+    volumes:
+      - mongodb_data:/data/db
+      - ./init-db:/docker-entrypoint-initdb.d:ro
+    networks:
+      - open5gs-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  webui:
+    image: open5gs:latest
+    container_name: open5gs-webui
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    environment:
+      - DB_URI=mongodb://mongodb:27017/open5gs
+    command: /usr/local/bin/open5gs-webuid
+    volumes:
+      - ./config/webui.yaml:/etc/open5gs/webui.yaml:ro
+      - logs:/var/log/open5gs
+    ports:
+      - "3000:3000"
+    networks:
+      - open5gs-network
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  nrf:
+    image: open5gs:latest
+    container_name: open5gs-nrf
+    command: /usr/local/bin/open5gs-nrfd
+    volumes:
+      - ./config/nrf.yaml:/etc/open5gs/nrf.yaml:ro
+      - logs:/var/log/open5gs
+    networks:
+      - open5gs-network
+    restart: always
+
+  ausf:
+    image: open5gs:latest
+    container_name: open5gs-ausf
+    depends_on:
+      - nrf
+    command: /usr/local/bin/open5gs-ausfd
+    volumes:
+      - ./config/ausf.yaml:/etc/open5gs/ausf.yaml:ro
+      - logs:/var/log/open5gs
+    networks:
+      - open5gs-network
+    restart: always
+
+  udm:
+    image: open5gs:latest
+    container_name: open5gs-udm
+    depends_on:
+      - nrf
+    command: /usr/local/bin/open5gs-udmd
+    volumes:
+      - ./config/udm.yaml:/etc/open5gs/udm.yaml:ro
+      - logs:/var/log/open5gs
+    networks:
+      - open5gs-network
+    restart: always
+
+  udr:
+    image: open5gs:latest
+    container_name: open5gs-udr
+    depends_on:
+      - nrf
+      mongodb:
+        condition: service_healthy
+    command: /usr/local/bin/open5gs-udrd
+    volumes:
+      - ./config/udr.yaml:/etc/open5gs/udr.yaml:ro
+      - logs:/var/log/open5gs
+    networks:
+      - open5gs-network
+    restart: always
+
+  pcf:
+    image: open5gs:latest
+    container_name: open5gs-pcf
+    depends_on:
+      - nrf
+      mongodb:
+        condition: service_healthy
+    command: /usr/local/bin/open5gs-pcfd
+    volumes:
+      - ./config/pcf.yaml:/etc/open5gs/pcf.yaml:ro
+      - logs:/var/log/open5gs
+    networks:
+      - open5gs-network
+    restart: always
+
+  nssf:
+    image: open5gs:latest
+    container_name: open5gs-nssf
+    depends_on:
+      - nrf
+    command: /usr/local/bin/open5gs-nssfd
+    volumes:
+      - ./config/nssf.yaml:/etc/open5gs/nssf.yaml:ro
+      - logs:/var/log/open5gs
+    networks:
+      - open5gs-network
+    restart: always
+
+  bsf:
+    image: open5gs:latest
+    container_name: open5gs-bsf
+    depends_on:
+      - nrf
+    command: /usr/local/bin/open5gs-bsfd
+    volumes:
+      - ./config/bsf.yaml:/etc/open5gs/bsf.yaml:ro
+      - logs:/var/log/open5gs
+    networks:
+      - open5gs-network
+    restart: always
+
+  amf:
+    image: open5gs:latest
+    container_name: open5gs-amf
+    depends_on:
+      - nrf
+    command: /usr/local/bin/open5gs-amfd
+    volumes:
+      - ./config/amf.yaml:/etc/open5gs/amf.yaml:ro
+      - logs:/var/log/open5gs
+    networks:
+      - open5gs-network
+    restart: always
+    cap_add:
+      - NET_ADMIN
+
+  smf:
+    image: open5gs:latest
+    container_name: open5gs-smf
+    depends_on:
+      - nrf
+    command: /usr/local/bin/open5gs-smfd
+    volumes:
+      - ./config/smf.yaml:/etc/open5gs/smf.yaml:ro
+      - logs:/var/log/open5gs
+    networks:
+      - open5gs-network
+    restart: always
+    cap_add:
+      - NET_ADMIN
+
+  upf:
+    image: open5gs:latest
+    container_name: open5gs-upf
+    command: /usr/local/bin/open5gs-upfd
+    volumes:
+      - ./config/upf.yaml:/etc/open5gs/upf.yaml:ro
+      - logs:/var/log/open5gs
+    networks:
+      - open5gs-network
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+
+networks:
+  open5gs-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.22.0.0/16
+
+volumes:
+  mongodb_data:
+  logs:

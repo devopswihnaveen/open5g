@@ -1,0 +1,804 @@
+---
+# NRF Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open5gs-nrf
+  namespace: open5gs
+  labels:
+    app: open5gs-nrf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: open5gs-nrf
+  template:
+    metadata:
+      labels:
+        app: open5gs-nrf
+    spec:
+      containers:
+      - name: nrf
+        image: open5gs:latest
+        imagePullPolicy: Always
+        command: ["/usr/local/bin/open5gs-nrfd", "-c", "/etc/open5gs/nrf.yaml"]
+        ports:
+        - containerPort: 7777
+          name: sbi
+        volumeMounts:
+        - name: config
+          mountPath: /etc/open5gs/nrf.yaml
+          subPath: nrf.yaml
+        - name: logs
+          mountPath: /var/log/open5gs
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          tcpSocket:
+            port: 7777
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: 7777
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      volumes:
+      - name: config
+        configMap:
+          name: open5gs-nrf-config
+      - name: logs
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: open5gs-nrf
+  namespace: open5gs
+spec:
+  selector:
+    app: open5gs-nrf
+  ports:
+  - port: 7777
+    targetPort: 7777
+    name: sbi
+  type: ClusterIP
+---
+# AMF Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open5gs-amf
+  namespace: open5gs
+  labels:
+    app: open5gs-amf
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: open5gs-amf
+  template:
+    metadata:
+      labels:
+        app: open5gs-amf
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+    spec:
+      containers:
+      - name: amf
+        image: open5gs:latest
+        imagePullPolicy: Always
+        command: ["/usr/local/bin/open5gs-amfd", "-c", "/etc/open5gs/amf.yaml"]
+        ports:
+        - containerPort: 7777
+          name: sbi
+        - containerPort: 38412
+          name: ngap
+          protocol: SCTP
+        - containerPort: 9090
+          name: metrics
+        volumeMounts:
+        - name: config
+          mountPath: /etc/open5gs/amf.yaml
+          subPath: amf.yaml
+        - name: logs
+          mountPath: /var/log/open5gs
+        resources:
+          requests:
+            cpu: 300m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+        securityContext:
+          capabilities:
+            add:
+            - NET_ADMIN
+        livenessProbe:
+          tcpSocket:
+            port: 7777
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: 7777
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      volumes:
+      - name: config
+        configMap:
+          name: open5gs-amf-config
+      - name: logs
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: open5gs-amf
+  namespace: open5gs
+  labels:
+    app: open5gs-amf
+spec:
+  selector:
+    app: open5gs-amf
+  ports:
+  - port: 7777
+    targetPort: 7777
+    name: sbi
+  - port: 38412
+    targetPort: 38412
+    name: ngap
+    protocol: SCTP
+  - port: 9090
+    targetPort: 9090
+    name: metrics
+  type: ClusterIP
+---
+# SMF Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open5gs-smf
+  namespace: open5gs
+  labels:
+    app: open5gs-smf
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: open5gs-smf
+  template:
+    metadata:
+      labels:
+        app: open5gs-smf
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+    spec:
+      containers:
+      - name: smf
+        image: open5gs:latest
+        imagePullPolicy: Always
+        command: ["/usr/local/bin/open5gs-smfd", "-c", "/etc/open5gs/smf.yaml"]
+        ports:
+        - containerPort: 7777
+          name: sbi
+        - containerPort: 8805
+          name: pfcp
+          protocol: UDP
+        - containerPort: 2123
+          name: gtpc
+          protocol: UDP
+        - containerPort: 2152
+          name: gtpu
+          protocol: UDP
+        - containerPort: 9090
+          name: metrics
+        volumeMounts:
+        - name: config
+          mountPath: /etc/open5gs/smf.yaml
+          subPath: smf.yaml
+        - name: logs
+          mountPath: /var/log/open5gs
+        resources:
+          requests:
+            cpu: 300m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+        securityContext:
+          capabilities:
+            add:
+            - NET_ADMIN
+        livenessProbe:
+          tcpSocket:
+            port: 7777
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: 7777
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      volumes:
+      - name: config
+        configMap:
+          name: open5gs-smf-config
+      - name: logs
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: open5gs-smf
+  namespace: open5gs
+spec:
+  selector:
+    app: open5gs-smf
+  ports:
+  - port: 7777
+    targetPort: 7777
+    name: sbi
+  - port: 8805
+    targetPort: 8805
+    name: pfcp
+    protocol: UDP
+  - port: 2123
+    targetPort: 2123
+    name: gtpc
+    protocol: UDP
+  - port: 2152
+    targetPort: 2152
+    name: gtpu
+    protocol: UDP
+  - port: 9090
+    targetPort: 9090
+    name: metrics
+  type: ClusterIP
+---
+# UPF Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open5gs-upf
+  namespace: open5gs
+  labels:
+    app: open5gs-upf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: open5gs-upf
+  template:
+    metadata:
+      labels:
+        app: open5gs-upf
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+    spec:
+      hostNetwork: false
+      containers:
+      - name: upf
+        image: open5gs:latest
+        imagePullPolicy: Always
+        command: ["/usr/local/bin/open5gs-upfd", "-c", "/etc/open5gs/upf.yaml"]
+        ports:
+        - containerPort: 8805
+          name: pfcp
+          protocol: UDP
+        - containerPort: 2152
+          name: gtpu
+          protocol: UDP
+        - containerPort: 9090
+          name: metrics
+        volumeMounts:
+        - name: config
+          mountPath: /etc/open5gs/upf.yaml
+          subPath: upf.yaml
+        - name: logs
+          mountPath: /var/log/open5gs
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 2000m
+            memory: 2Gi
+        securityContext:
+          capabilities:
+            add:
+            - NET_ADMIN
+          privileged: true
+        livenessProbe:
+          exec:
+            command:
+            - pgrep
+            - open5gs-upfd
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - pgrep
+            - open5gs-upfd
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      volumes:
+      - name: config
+        configMap:
+          name: open5gs-upf-config
+      - name: logs
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: open5gs-upf
+  namespace: open5gs
+spec:
+  selector:
+    app: open5gs-upf
+  ports:
+  - port: 8805
+    targetPort: 8805
+    name: pfcp
+    protocol: UDP
+  - port: 2152
+    targetPort: 2152
+    name: gtpu
+    protocol: UDP
+  - port: 9090
+    targetPort: 9090
+    name: metrics
+  type: ClusterIP
+---
+# AUSF Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open5gs-ausf
+  namespace: open5gs
+  labels:
+    app: open5gs-ausf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: open5gs-ausf
+  template:
+    metadata:
+      labels:
+        app: open5gs-ausf
+    spec:
+      containers:
+      - name: ausf
+        image: open5gs:latest
+        imagePullPolicy: Always
+        command: ["/usr/local/bin/open5gs-ausfd", "-c", "/etc/open5gs/ausf.yaml"]
+        ports:
+        - containerPort: 7777
+          name: sbi
+        volumeMounts:
+        - name: config
+          mountPath: /etc/open5gs/ausf.yaml
+          subPath: ausf.yaml
+        - name: logs
+          mountPath: /var/log/open5gs
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      volumes:
+      - name: config
+        configMap:
+          name: open5gs-ausf-config
+      - name: logs
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: open5gs-ausf
+  namespace: open5gs
+spec:
+  selector:
+    app: open5gs-ausf
+  ports:
+  - port: 7777
+    targetPort: 7777
+    name: sbi
+  type: ClusterIP
+---
+# UDM Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open5gs-udm
+  namespace: open5gs
+  labels:
+    app: open5gs-udm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: open5gs-udm
+  template:
+    metadata:
+      labels:
+        app: open5gs-udm
+    spec:
+      containers:
+      - name: udm
+        image: open5gs:latest
+        imagePullPolicy: Always
+        command: ["/usr/local/bin/open5gs-udmd", "-c", "/etc/open5gs/udm.yaml"]
+        ports:
+        - containerPort: 7777
+          name: sbi
+        volumeMounts:
+        - name: config
+          mountPath: /etc/open5gs/udm.yaml
+          subPath: udm.yaml
+        - name: logs
+          mountPath: /var/log/open5gs
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      volumes:
+      - name: config
+        configMap:
+          name: open5gs-udm-config
+      - name: logs
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: open5gs-udm
+  namespace: open5gs
+spec:
+  selector:
+    app: open5gs-udm
+  ports:
+  - port: 7777
+    targetPort: 7777
+    name: sbi
+  type: ClusterIP
+---
+# UDR Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open5gs-udr
+  namespace: open5gs
+  labels:
+    app: open5gs-udr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: open5gs-udr
+  template:
+    metadata:
+      labels:
+        app: open5gs-udr
+    spec:
+      containers:
+      - name: udr
+        image: open5gs:latest
+        imagePullPolicy: Always
+        command: ["/usr/local/bin/open5gs-udrd", "-c", "/etc/open5gs/udr.yaml"]
+        ports:
+        - containerPort: 7777
+          name: sbi
+        volumeMounts:
+        - name: config
+          mountPath: /etc/open5gs/udr.yaml
+          subPath: udr.yaml
+        - name: logs
+          mountPath: /var/log/open5gs
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      volumes:
+      - name: config
+        configMap:
+          name: open5gs-udr-config
+      - name: logs
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: open5gs-udr
+  namespace: open5gs
+spec:
+  selector:
+    app: open5gs-udr
+  ports:
+  - port: 7777
+    targetPort: 7777
+    name: sbi
+  type: ClusterIP
+---
+# PCF Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open5gs-pcf
+  namespace: open5gs
+  labels:
+    app: open5gs-pcf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: open5gs-pcf
+  template:
+    metadata:
+      labels:
+        app: open5gs-pcf
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+    spec:
+      containers:
+      - name: pcf
+        image: open5gs:latest
+        imagePullPolicy: Always
+        command: ["/usr/local/bin/open5gs-pcfd", "-c", "/etc/open5gs/pcf.yaml"]
+        ports:
+        - containerPort: 7777
+          name: sbi
+        - containerPort: 9090
+          name: metrics
+        volumeMounts:
+        - name: config
+          mountPath: /etc/open5gs/pcf.yaml
+          subPath: pcf.yaml
+        - name: logs
+          mountPath: /var/log/open5gs
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      volumes:
+      - name: config
+        configMap:
+          name: open5gs-pcf-config
+      - name: logs
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: open5gs-pcf
+  namespace: open5gs
+spec:
+  selector:
+    app: open5gs-pcf
+  ports:
+  - port: 7777
+    targetPort: 7777
+    name: sbi
+  - port: 9090
+    targetPort: 9090
+    name: metrics
+  type: ClusterIP
+---
+# NSSF Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open5gs-nssf
+  namespace: open5gs
+  labels:
+    app: open5gs-nssf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: open5gs-nssf
+  template:
+    metadata:
+      labels:
+        app: open5gs-nssf
+    spec:
+      containers:
+      - name: nssf
+        image: open5gs:latest
+        imagePullPolicy: Always
+        command: ["/usr/local/bin/open5gs-nssfd", "-c", "/etc/open5gs/nssf.yaml"]
+        ports:
+        - containerPort: 7777
+          name: sbi
+        volumeMounts:
+        - name: config
+          mountPath: /etc/open5gs/nssf.yaml
+          subPath: nssf.yaml
+        - name: logs
+          mountPath: /var/log/open5gs
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      volumes:
+      - name: config
+        configMap:
+          name: open5gs-nssf-config
+      - name: logs
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: open5gs-nssf
+  namespace: open5gs
+spec:
+  selector:
+    app: open5gs-nssf
+  ports:
+  - port: 7777
+    targetPort: 7777
+    name: sbi
+  type: ClusterIP
+---
+# BSF Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open5gs-bsf
+  namespace: open5gs
+  labels:
+    app: open5gs-bsf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: open5gs-bsf
+  template:
+    metadata:
+      labels:
+        app: open5gs-bsf
+    spec:
+      containers:
+      - name: bsf
+        image: open5gs:latest
+        imagePullPolicy: Always
+        command: ["/usr/local/bin/open5gs-bsfd", "-c", "/etc/open5gs/bsf.yaml"]
+        ports:
+        - containerPort: 7777
+          name: sbi
+        volumeMounts:
+        - name: config
+          mountPath: /etc/open5gs/bsf.yaml
+          subPath: bsf.yaml
+        - name: logs
+          mountPath: /var/log/open5gs
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      volumes:
+      - name: config
+        configMap:
+          name: open5gs-bsf-config
+      - name: logs
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: open5gs-bsf
+  namespace: open5gs
+spec:
+  selector:
+    app: open5gs-bsf
+  ports:
+  - port: 7777
+    targetPort: 7777
+    name: sbi
+  type: ClusterIP
+---
+# WebUI Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open5gs-webui
+  namespace: open5gs
+  labels:
+    app: open5gs-webui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: open5gs-webui
+  template:
+    metadata:
+      labels:
+        app: open5gs-webui
+    spec:
+      containers:
+      - name: webui
+        image: open5gs:latest
+        imagePullPolicy: Always
+        command: ["/usr/local/bin/open5gs-webuid", "-c", "/etc/open5gs/webui.yaml"]
+        ports:
+        - containerPort: 3000
+          name: http
+        env:
+        - name: DB_URI
+          value: "mongodb://mongodb:27017/open5gs"
+        volumeMounts:
+        - name: config
+          mountPath: /etc/open5gs/webui.yaml
+          subPath: webui.yaml
+        - name: logs
+          mountPath: /var/log/open5gs
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      volumes:
+      - name: config
+        configMap:
+          name: open5gs-webui-config
+      - name: logs
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: open5gs-webui
+  namespace: open5gs
+spec:
+  selector:
+    app: open5gs-webui
+  ports:
+  - port: 3000
+    targetPort: 3000
+    name: http
+  type: LoadBalancer

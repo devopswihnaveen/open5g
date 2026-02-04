@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: open5gs
+  labels:
+    name: open5gs
+    environment: production
+    managed-by: terraform
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: open5gs-quota
+  namespace: open5gs
+spec:
+  hard:
+    requests.cpu: "20"
+    requests.memory: 40Gi
+    limits.cpu: "40"
+    limits.memory: 80Gi
+    persistentvolumeclaims: "10"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: open5gs-limits
+  namespace: open5gs
+spec:
+  limits:
+  - max:
+      cpu: "2"
+      memory: 4Gi
+    min:
+      cpu: "100m"
+      memory: 128Mi
+    default:
+      cpu: "500m"
+      memory: 512Mi
+    defaultRequest:
+      cpu: "200m"
+      memory: 256Mi
+    type: Container

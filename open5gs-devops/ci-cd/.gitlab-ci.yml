@@ -1,0 +1,179 @@
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  AWS_DEFAULT_REGION: us-east-1
+  EKS_CLUSTER_NAME: open5gs-prod
+  HELM_CHART_PATH: ./helm/open5gs
+
+stages:
+  - validate
+  - build
+  - test
+  - deploy-staging
+  - deploy-production
+
+.aws_configure: &aws_configure
+  before_script:
+    - apt-get update && apt-get install -y curl unzip
+    - curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    - unzip awscliv2.zip
+    - ./aws/install
+    - aws --version
+    - aws eks update-kubeconfig --region $AWS_DEFAULT_REGION --name $EKS_CLUSTER_NAME
+
+# Validation Stage
+terraform:validate:
+  stage: validate
+  image: hashicorp/terraform:1.5.0
+  script:
+    - cd terraform
+    - terraform fmt -check -recursive
+    - terraform init -backend=false
+    - terraform validate
+  only:
+    - merge_requests
+    - main
+    - develop
+
+dockerfile:lint:
+  stage: validate
+  image: hadolint/hadolint:latest-debian
+  script:
+    - hadolint docker/Dockerfile
+  allow_failure: true
+  only:
+    - merge_requests
+    - main
+    - develop
+
+security:scan:
+  stage: validate
+  image: aquasec/trivy:latest
+  script:
+    - trivy fs --exit-code 0 --no-progress --format json -o trivy-report.json .
+    - trivy fs --exit-code 1 --severity CRITICAL --no-progress .
+  artifacts:
+    reports:
+      container_scanning: trivy-report.json
+  only:
+    - merge_requests
+    - main
+    - develop
+
+# Build Stage
+docker:build:
+  stage: build
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  before_script:
+    - apk add --no-cache python3 py3-pip
+    - pip3 install awscli
+    - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $CI_REGISTRY
+  script:
+    - docker build -t $CI_REGISTRY/$CI_PROJECT_PATH:$CI_COMMIT_SHORT_SHA -f docker/Dockerfile .
+    - docker tag $CI_REGISTRY/$CI_PROJECT_PATH:$CI_COMMIT_SHORT_SHA $CI_REGISTRY/$CI_PROJECT_PATH:latest
+    - docker push $CI_REGISTRY/$CI_PROJECT_PATH:$CI_COMMIT_SHORT_SHA
+    - docker push $CI_REGISTRY/$CI_PROJECT_PATH:latest
+  only:
+    - main
+    - develop
+    - tags
+
+image:scan:
+  stage: test
+  image: aquasec/trivy:latest
+  dependencies:
+    - docker:build
+  before_script:
+    - apk add --no-cache aws-cli
+    - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $CI_REGISTRY
+  script:
+    - trivy image --exit-code 0 --no-progress --format json -o trivy-image-report.json $CI_REGISTRY/$CI_PROJECT_PATH:$CI_COMMIT_SHORT_SHA
+    - trivy image --exit-code 1 --severity CRITICAL --no-progress $CI_REGISTRY/$CI_PROJECT_PATH:$CI_COMMIT_SHORT_SHA
+  artifacts:
+    reports:
+      container_scanning: trivy-image-report.json
+  only:
+    - main
+    - develop
+    - tags
+
+# Deploy to Staging
+deploy:staging:
+  stage: deploy-staging
+  image: alpine/k8s:1.28.0
+  <<: *aws_configure
+  script:
+    - helm upgrade --install open5gs $HELM_CHART_PATH 
+        --namespace open5gs 
+        --create-namespace 
+        --set global.imageRegistry=$CI_REGISTRY 
+        --set global.imageTag=$CI_COMMIT_SHORT_SHA 
+        --values $HELM_CHART_PATH/values-staging.yaml 
+        --wait 
+        --timeout 10m
+    - kubectl wait --for=condition=ready pod -l app=open5gs-nrf -n open5gs --timeout=300s
+    - kubectl wait --for=condition=ready pod -l app=open5gs-amf -n open5gs --timeout=300s
+  environment:
+    name: staging
+    url: https://staging.open5gs.example.com
+    on_stop: cleanup:staging
+  only:
+    - develop
+
+cleanup:staging:
+  stage: deploy-staging
+  image: alpine/k8s:1.28.0
+  <<: *aws_configure
+  script:
+    - helm uninstall open5gs -n open5gs
+  when: manual
+  environment:
+    name: staging
+    action: stop
+  only:
+    - develop
+
+# Deploy to Production
+deploy:production:
+  stage: deploy-production
+  image: alpine/k8s:1.28.0
+  <<: *aws_configure
+  script:
+    - helm upgrade --install open5gs $HELM_CHART_PATH 
+        --namespace open5gs 
+        --create-namespace 
+        --set global.imageRegistry=$CI_REGISTRY 
+        --set global.imageTag=$CI_COMMIT_SHORT_SHA 
+        --values $HELM_CHART_PATH/values-production.yaml 
+        --wait 
+        --timeout 15m
+    - kubectl rollout status deployment/open5gs-nrf -n open5gs --timeout=5m
+    - kubectl rollout status deployment/open5gs-amf -n open5gs --timeout=5m
+    - kubectl rollout status deployment/open5gs-smf -n open5gs --timeout=5m
+    - kubectl rollout status deployment/open5gs-upf -n open5gs --timeout=5m
+  environment:
+    name: production
+    url: https://open5gs.example.com
+    on_stop: rollback:production
+  when: manual
+  only:
+    - main
+    - tags
+
+rollback:production:
+  stage: deploy-production
+  image: alpine/k8s:1.28.0
+  <<: *aws_configure
+  script:
+    - helm rollback open5gs -n open5gs
+    - kubectl rollout status deployment/open5gs-nrf -n open5gs
+    - kubectl rollout status deployment/open5gs-amf -n open5gs
+  environment:
+    name: production
+    action: rollback
+  when: manual
+  only:
+    - main
+    - tags
