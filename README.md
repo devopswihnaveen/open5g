@@ -339,8 +339,8 @@ open /Applications/Docker.app
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/yourusername/open5gs-devops.git
-cd open5gs-devops
+git clone https://github.com/devopswihnaveen/open5g.git
+cd open5g
 
 # 2. Configure AWS credentials
 aws configure
@@ -1138,7 +1138,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/yourusername/open5gs-devops.git
+    repoURL: https://github.com/devopswihnaveen/open5g.git
     targetRevision: main
     path: helm/open5gs
     helm:
@@ -1792,10 +1792,10 @@ We welcome contributions! Here's how you can help:
 ```bash
 # Clone your fork
 git clone https://github.com/devopswihnaveen/open5g.git
-cd open5gs-devops
+cd open5g
 
 # Add upstream
-git remote add upstream https://github.com/original/open5gs-devops.git
+git remote add upstream https://github.com/original/open5g.git
 
 # Create branch
 git checkout -b feature/my-feature
@@ -1920,6 +1920,6 @@ For commercial support, consulting, or custom development:
 
 **Made with ❤️ by the Open5GS DevOps Community**
 
-[⬆ Back to Top](#open5gs-devops---production-deployment-guide)
+[⬆ Back to Top](#open5g---production-deployment-guide)
 
 </div>
